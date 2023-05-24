@@ -42,9 +42,9 @@ station_code	해당 승하차 정류소 ID
 station_name	해당 승하차 정류소 이름
 latitude	해당 버스 정류장 위도
 longitude	해당 버스 정류장 경도
-X~Y_ride	X:00:00부터 X:59:59까지 승차한 인원 수
-X~Y_takeoff	X:00:00부터 X:59:59까지 하차한 인원 수
-18~20_ride	18:00:00부터 19:59:59까지 승차한 인원 수
+X-Y_ride	X:00:00부터 X:59:59까지 승차한 인원 수
+X-Y_takeoff	X:00:00부터 X:59:59까지 하차한 인원 수
+18-20_ride	18:00:00부터 19:59:59까지 승차한 인원 수
 
 --------------------------------------------------------------------
 
@@ -54,11 +54,11 @@ numpy, pandas, keras의 Sequential 모델과 Dense 레이어,  sklearn의 MinMax
 
 -train.csv 파일을 데이터셋으로 읽어오기
 
-- x와 y 데이터를 설정, x는 'id', 'bus_route_id', 'in_out', 'station_code', 'station_name', 'latitude', 'longitude', '6~7_ride', '7~8_ride', '8~9_ride', '9~10_ride', '10~11_ride', '11~12_ride', '6~7_takeoff', '7~8_takeoff', '8~9_takeoff', '9~10_takeoff', '10~11_takeoff', '11~12_takeoff' 열을 포함
+- x와 y 데이터를 설정, x는 'id', 'bus_route_id', 'in_out', 'station_code', 'station_name', 'latitude', 'longitude', '6-7_ride', '7-8_ride', '8-9_ride', '9-10_ride', '10-11_ride', '11-12_ride', '6-7_takeoff', '7-8_takeoff', '8-9_takeoff', '9-10_takeoff', '10-11_takeoff', '11-12_takeoff' 열을 포함
 
-- 'ride' 카테고리에 대한 열들을 활용하여 새로운 특성을 생성, ex) 'takeon_avg_6~8'은 '6~7_ride'와 '7~8_ride'의 평균이고, 'takeon_avg_8~10'은 '8~9_ride'와 '9~10_ride'의 평균
+- 'ride' 카테고리에 대한 열들을 활용하여 새로운 특성을 생성, ex) 'takeon_avg_6-8'은 '6-7_ride'와 '7-8_ride'의 평균이고, 'takeon_avg_8-10'은 '8-9_ride'와 '9-10_ride'의 평균
 
-- 'takeoff' 카테고리에 대한 열들을 활용하여 새로운 특성을 생성,  ex) 'takeoff_avg_6~8'은 '6~7_takeoff'과 '7~8_takeoff'의 평균이고, 'takeoff_avg_8~10'은 '89_takeoff'와 '9~10_takeoff'의 평균
+- 'takeoff' 카테고리에 대한 열들을 활용하여 새로운 특성을 생성,  ex) 'takeoff_avg_6-8'은 '6-7_takeoff'과 '7-8_takeoff'의 평균이고, 'takeoff_avg_8-10'은 '8-9_takeoff'와 '9-10_takeoff'의 평균
 
 - 'date' 열을 datetime 형식으로 변환하고, 이를 활용하여 'year', 'month', 'day', 'weekday' 특성을 생성
 
