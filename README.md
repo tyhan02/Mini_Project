@@ -41,10 +41,10 @@
 
 
 id	데이터 고유 ID(train, test와의 중복 없음)
----
+
 
 date	날짜
----
+
 
 bus_route_id	노선 ID
 
