@@ -1,0 +1,436 @@
+#!/usr/bin/env python
+# coding: utf-8
+
+# # EDA
+
+# In[254]:
+
+
+# import library
+import pandas as pd 
+import numpy as np
+from keras.models import Sequential
+from keras.layers import Dense
+from sklearn.preprocessing import MinMaxScaler
+from sklearn.model_selection import train_test_split, KFold
+from sklearn.metrics import r2_score
+from sklearn.metrics import mean_squared_error
+import matplotlib.pyplot as plt
+
+
+import os 
+import geopandas as gpd
+import sys
+from shapely.geometry import *
+from shapely.ops import *
+from fiona.crs import from_string
+import warnings
+warnings.filterwarnings(action='ignore')
+
+epsg4326 = from_string("+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs")
+epsg5179 = from_string("+proj=tmerc +lat_0=38 +lon_0=127.5 +k=0.9996 +x_0=1000000 +y_0=2000000 +ellps=GRS80 +units=m +no_defs")
+
+
+# In[255]:
+
+
+# data input
+train = pd.read_csv("train.csv", dtype=str, encoding='utf-8')
+test = pd.read_csv("test.csv", dtype=str, encoding='utf-8')
+
+print("train :", len(train))
+print("test :", len(test))
+
+
+# In[259]:
+
+
+test.head()
+
+
+# In[260]:
+
+
+test.tail()
+
+
+# # 결측치 제거
+
+# In[258]:
+
+
+pd.DataFrame({'train':train.isnull().sum(),
+              'test':test.isnull().sum()})
+
+
+# 결측값은 bus_bts 데이터에만 존재 : 하차태그 안한 경우(895736, 약 37%), 정류장이름 없음(49)
+
+# In[227]:
+
+
+train.columns
+
+
+# In[228]:
+
+
+#datasets = pd.read_csv('./train.csv')
+
+# 1. x, y Data
+x = train[['id', 'bus_route_id', 'in_out', 'station_code', 'station_name',
+              'latitude', 'longitude', '6~7_ride', '7~8_ride', '8~9_ride',
+              '9~10_ride', '10~11_ride', '11~12_ride', '6~7_takeoff', '7~8_takeoff',
+              '8~9_takeoff', '9~10_takeoff', '10~11_takeoff']].copy()
+y = train[['18~20_ride']]
+
+
+# In[229]:
+
+
+x_train, x_test, y_train, y_test = train_test_split(
+    x, y, test_size=0.3, train_size=0.7, random_state=80, shuffle=True
+)
+
+
+# In[230]:
+
+
+col_t = [str(j)+"~"+ str(j+1) + "_" + str(i) for i in ("ride","takeoff") for j in range(6,12)]
+train['date'] = pd.to_datetime(train['date'])
+train[col_t + ['18~20_ride']] = train[col_t + ['18~20_ride']].astype(float)
+test['date'] = pd.to_datetime(test['date'])
+test[col_t] = test[col_t].astype(float)
+
+
+# 타입변경
+
+# In[231]:
+
+
+plt.figure(figsize=(12,6))
+ax1 = plt.subplot(3,1,1)
+train['date'].hist(ax=ax1, bins = 30)
+plt.title("Train", fontsize=15)
+ax2 = plt.subplot(3,1,2)
+plt.title("Test", fontsize=15)
+test['date'].hist(ax=ax2, bins = 20)
+plt.tight_layout()
+plt.show()
+
+print(" - train :" ,train['date'].dt.date.min(),"~",train['date'].dt.date.max())
+print(" - test :" ,test['date'].dt.date.min(),"~",test['date'].dt.date.max())
+
+
+# train : 2019-09-01 ~ 2019-09-30
+#  - test : 2019-10-01 ~ 2019-10-16
+#  - bus_bts : 2019-09-01 ~ 2019-10-16
+# 
+# 평일과 주말에 버스 이용율 차이에 대한 패턴이 보인다.
+# 요일 변수(category) 또는 평일여부(dummy) 파생변수에 대한 고려가 필요해보임.
+
+# In[232]:
+
+
+train.describe().applymap(lambda x : round(x,3))
+
+
+# In[233]:
+
+
+train[(train['date']=='2019-09-04') & (train['bus_route_id']=='4270000')]['station_name'].duplicated().sum()
+
+
+# In[234]:
+
+
+a = train[['station_code','station_name']].drop_duplicates().reset_index(drop=True)
+cc = a['station_name'][a['station_name'].duplicated()].unique()
+
+a[a['station_name'].isin(cc)].sort_values(by='station_name')
+
+
+# In[235]:
+
+
+len(train['bus_route_id'].unique())
+
+
+# In[236]:
+
+
+train[['date','bus_route_id','latitude','longitude']].duplicated().sum()
+
+
+# In[237]:
+
+
+bus_nosun = train.groupby(['bus_route_id'])['station_code'].unique().reset_index(name='station_list')
+bus_nosun['station_list'] = bus_nosun['station_list'].apply(lambda x : x.tolist())
+bus_nosun['cnt'] = bus_nosun['station_list'].apply(lambda x : len(x))
+bus_nosun = bus_nosun.sort_values(by='cnt', ascending=False).reset_index(drop=True)
+plt.title("버스노선별 정류장 수")
+plt.plot(bus_nosun.index, bus_nosun['cnt'], "b.")
+plt.show()
+
+print(round(bus_nosun.describe(), 3))
+
+
+# # 이상치 확인 그래프 (x 전체)
+
+# In[238]:
+
+
+date_sum = train.groupby(['date'])[col_t + ['18~20_ride']].sum()
+date_sum.index = date_sum.index.date
+
+plt.figure(figsize=(12,12))
+ax=plt.subplot(3,1,1)
+date_sum[date_sum.columns[:6]].plot(kind='bar', ax=ax)
+plt.xlabel('일자')
+plt.xticks(rotation=45)
+plt.ylabel('탑승자 수(명)')
+plt.title("ride(탑승자 수)", fontsize=15)
+
+ax=plt.subplot(3,1,2)
+date_sum[date_sum.columns[6:-1]].plot(kind='bar', ax=ax)
+plt.xlabel('일자')
+plt.xticks(rotation=45)
+plt.ylabel('하차인원 수(명)')
+plt.title("takeoff(하차인원 수)", fontsize=15)
+
+ax=plt.subplot(3,1,3)
+date_sum[date_sum.columns[-1]].plot(kind='bar', ax=ax)
+plt.xlabel('일자')
+plt.xticks(rotation=45)
+plt.ylabel('탑승자 수(명)')
+plt.title("18~20_ride (탑승자 수)", fontsize=15)
+
+plt.tight_layout()
+plt.show()
+
+
+# # 이상치 확인 그래프(X_train)
+
+# In[239]:
+
+
+date_sum = x_train.groupby(['date'])[col_t + ['18~20_ride']].sum()
+date_sum.index = date_sum.index.date
+
+plt.figure(figsize=(12,12))
+ax=plt.subplot(3,1,1)
+date_sum[date_sum.columns[:6]].plot(kind='bar', ax=ax)
+plt.xlabel('일자')
+plt.xticks(rotation=45)
+plt.ylabel('탑승자 수(명)')
+plt.title("ride(탑승자 수)", fontsize=15)
+
+ax=plt.subplot(3,1,2)
+date_sum[date_sum.columns[6:-1]].plot(kind='bar', ax=ax)
+plt.xlabel('일자')
+plt.xticks(rotation=45)
+plt.ylabel('하차인원 수(명)')
+plt.title("takeoff(하차인원 수)", fontsize=15)
+
+ax=plt.subplot(3,1,3)
+date_sum[date_sum.columns[-1]].plot(kind='bar', ax=ax)
+plt.xlabel('일자')
+plt.xticks(rotation=45)
+plt.ylabel('탑승인원 수(명)')
+plt.title("18~20_ride (탑승자 수)", fontsize=15)
+
+plt.tight_layout()
+plt.show()
+
+
+# # Correlation 확인
+
+# In[240]:
+
+
+plt.figure(figsize=(7,7))
+plt.title("Correlation", fontsize=15)
+sns.heatmap(data = date_sum_.corr(), annot=True, fmt = '.2f', linewidths=.5, cmap='Blues')
+plt.show()
+
+
+# In[241]:
+
+
+plt.plot(date_sum_['8~9_ride'], date_sum_['8~9_takeoff'], "b.")
+
+
+# # 버스 정류장 수 확인
+
+# In[242]:
+
+
+st_col = ['station_code','station_name','in_out','longitude','latitude']
+station_loc = pd.concat([train[st_col], test[st_col]], ignore_index=True).drop_duplicates().reset_index(drop=True)
+station_loc[['longitude','latitude']] = station_loc[['longitude','latitude']].astype(float)
+station_loc['geometry'] = station_loc.apply(lambda x : Point(x.longitude, x.latitude), axis=1)
+station_loc = gpd.GeoDataFrame(station_loc, geometry='geometry', crs=epsg4326)
+
+print("*버스 정류장 수 :", len(station_loc))
+print(station_loc['in_out'].value_counts())
+station_loc.head()
+
+
+# In[243]:
+
+
+def bins_category(df, colname, bin_ls, max_value):
+    cut_ = pd.cut(df[colname],
+                  bins=bin_ls + [max_value],
+                  include_lowest = False).\
+    value_counts().sort_index().to_frame()
+    return cut_
+for i in col_t:
+    bin_ =  bins_category(train,i, [0,1,2,3,4,5,6,7], 140)
+    if i == '6~7_ride':
+        merged = bin_.copy()
+    else:
+        merged = merged.join(bin_)
+
+
+# # 구간별 승하차 인원수
+
+# In[244]:
+
+
+merged.plot(kind='bar', figsize=(10,6))
+plt.title("구간별 승하차 인원 수", fontsize=15)
+plt.grid()
+plt.show()
+#bin_ =  bins_category(train,'18~20_ride', [0,1,2,3,4,5], 250)
+
+
+# # 요일, 주말, 공휴일별
+
+# In[245]:
+
+
+def get_dayattr(df):
+    # 0(Monday) ~ 6(Sunday)
+    df['dayofweek'] = df['date'].dt.dayofweek
+    # 추석, 한글날, 개천절
+    holiday=['2019-09-12', '2019-09-13', '2019-09-14','2019-10-03','2019-10-09']
+    df['weekends'] = np.where(df['dayofweek'] >= 5, 1,0) # 주말여부
+    df['holiday'] = np.where(df['date'].isin(holiday), 1,0) # 공휴일여부
+    return df
+train = get_dayattr(train)
+
+
+# In[246]:
+
+
+# 평일
+train_1 = train[(train['weekends']==0) & (train['holiday']==0)].groupby(['station_code','station_name'])[col_t].sum()
+train_1['total_ride'] = train_1[col_t[:6]].sum(axis=1)
+train_1['total_getoff'] = train_1[col_t[6:]].sum(axis=1)
+# 쉬는날
+train_2 = train[(train['weekends']==1) | (train['holiday']==1)].groupby(['station_code','station_name'])[col_t].sum()
+train_2['total_ride'] = train_2[col_t[:6]].sum(axis=1)
+train_2['total_getoff'] = train_2[col_t[6:]].sum(axis=1)
+
+plt.figure(figsize=(10,10))
+ax = plt.subplot(2,1,1)
+plt.title("평일")
+train_1 = train_1.sort_values(by='total_ride',ascending=False)
+train_1[['total_ride','total_getoff']].head(15).plot(kind='bar', ax=ax)
+plt.grid()
+ax = plt.subplot(2,1,2)
+plt.title("쉬는날")
+train_2 = train_2.sort_values(by='total_ride',ascending=False)
+train_2[['total_ride','total_getoff']].head(15).plot(kind='bar', ax=ax)
+plt.tight_layout()
+plt.grid()
+plt.show()
+
+
+# In[247]:
+
+
+plt.figure(figsize=(10,10))
+ax = plt.subplot(2,1,1)
+plt.title("평일")
+train_1 = train_1.sort_values(by='total_getoff',ascending=False)
+train_1[['total_ride','total_getoff']].head(15).plot(kind='bar', ax=ax)
+plt.grid()
+ax = plt.subplot(2,1,2)
+plt.title("쉬는날")
+train_2 = train_2.sort_values(by='total_getoff',ascending=False)
+train_2[['total_ride','total_getoff']].head(15).plot(kind='bar', ax=ax)
+plt.tight_layout()
+plt.grid()
+plt.show()
+
+
+# # 시간대별 승차, 하차 인원 sum
+
+# In[248]:
+
+
+train['ride_half_1'] = train[col_t[:3]].sum(axis=1)
+train['ride_half_2'] = train[col_t[3:6]].sum(axis=1)
+train['ride_tot'] = train[col_t[:6]].sum(axis=1)
+train['getoff_half_1'] = train[col_t[6:9]].sum(axis=1)
+train['getoff_half_2'] = train[col_t[9:]].sum(axis=1)
+train['getoff_tot'] = train[col_t[6:]].sum(axis=1)
+
+
+# In[249]:
+
+
+train.sort_values(by='6~7_ride', ascending=False)['station_name'].head(20)
+
+
+# In[250]:
+
+
+#train.loc[(train['ride_tot'] - train['getoff_tot']).idxmin()]
+train.loc[(train['ride_tot'] - train['getoff_tot']).idxmax()]
+
+
+# In[251]:
+
+
+x = train[['6~7_ride', '7~8_ride', '8~9_ride', '9~10_ride', '10~11_ride', '11~12_ride',
+              '6~7_takeoff', '7~8_takeoff', '8~9_takeoff', '9~10_takeoff', '10~11_takeoff', '11~12_takeoff']]
+
+# 이상치 식별을 위한 IQR 계산
+Q1 = x.quantile(0.25)
+Q3 = x.quantile(0.75)
+IQR = Q3 - Q1
+
+# 이상치 식별
+lower_bound = Q1 - 1.5 * IQR
+upper_bound = Q3 + 1.5 * IQR
+outliers = (x < lower_bound) | (x > upper_bound)
+
+# 이상치 확인 결과 출력
+print(outliers)
+
+# Box Plot으로 이상치 확인
+plt.figure(figsize=(12, 6))
+x.boxplot()
+plt.xticks(rotation=45)
+plt.title("Box Plot of Outliers")
+plt.show()
+
+
+# In[252]:
+
+
+plt.figure(figsize=(12, 6))
+train.boxplot()
+plt.xticks(rotation=45)
+plt.title("Box Plot of Outliers")
+plt.show()
+
+
+# In[ ]:
+
+
+
+
