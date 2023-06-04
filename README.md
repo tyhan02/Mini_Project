@@ -75,8 +75,6 @@ X-Y_takeoff	X:00:00부터 X:59:59까지 하차한 인원 수
 
 --------------------------------------------------------------------
 
--필요한 라이브러리를 import
-
 numpy, pandas, keras의 Sequential 모델과 Dense 레이어,  sklearn의 MinMaxScaler, train_test_split, KFold, r2_score, mean_squared_error 등을 import, 또한 시각화를 위해 matplotlib의 pyplot을 import
 
 -train.csv 파일을 데이터셋으로 읽어오기
